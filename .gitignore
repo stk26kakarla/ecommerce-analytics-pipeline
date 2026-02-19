@@ -1,0 +1,18 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Terraform
+terraform/.terraform/
+terraform/.terraform.lock.hcl
+terraform/terraform.tfstate
+terraform/terraform.tfstate.backup
+
+# Data — ignore large generated files, keep sample CSVs
+data/raw/*.json
+data/raw/**/*.json
+
+# IDE
+.idea/
+.vscode/
