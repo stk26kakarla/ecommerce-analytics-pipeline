@@ -1,4 +1,4 @@
-.PHONY: setup terraform-init terraform-apply generate-data generate-samples run-pipeline test clean
+.PHONY: setup terraform-init terraform-apply generate-data generate-samples bronze-ingest run-pipeline test clean
 
 setup:
 	docker compose up -d --build
@@ -17,6 +17,9 @@ generate-data:
 
 generate-samples:
 	docker compose exec spark python -m src.ingestion.generate_ecommerce_data --samples-only
+
+bronze-ingest:
+	docker compose exec spark spark-submit src/spark_jobs/bronze_ingestion.py
 
 run-pipeline:
 	docker compose exec spark python src/pipeline.py
