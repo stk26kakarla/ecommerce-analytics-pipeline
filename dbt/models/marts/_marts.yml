@@ -1,0 +1,319 @@
+version: 2
+
+models:
+  # ── fct_daily_revenue ────────────────────────────────────────────────────────
+  - name: fct_daily_revenue
+    description: >
+      Daily revenue, cost, and gross-profit aggregated by product category and
+      sub-category.  Only revenue-generating orders (completed, delivered,
+      shipped) are included.  Each row also carries the day's total revenue and
+      this category's share of it, enabling 100 %-stacked charts without a
+      secondary query.
+
+      Grain: one row per (order_date, category, sub_category).
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - order_date
+            - category
+            - sub_category
+    columns:
+      - name: order_date
+        description: Calendar date of the aggregated orders.
+        tests:
+          - not_null
+
+      - name: order_year
+        description: Calendar year derived from order_date.
+        tests:
+          - not_null
+
+      - name: order_month
+        description: Calendar month (1–12) derived from order_date.
+        tests:
+          - not_null
+
+      - name: category
+        description: Top-level product category.
+        tests:
+          - not_null
+
+      - name: sub_category
+        description: Product sub-category within the category.
+        tests:
+          - not_null
+
+      - name: order_count
+        description: Distinct revenue orders on this date in this category.
+        tests:
+          - not_null
+
+      - name: units_sold
+        description: Total units sold (sum of line-item quantities).
+        tests:
+          - not_null
+
+      - name: gross_revenue
+        description: Sum of line_total for this date and category.
+        tests:
+          - not_null
+
+      - name: total_cost
+        description: Sum of item_cost (quantity × unit_cost).
+        tests:
+          - not_null
+
+      - name: gross_profit
+        description: gross_revenue minus total_cost.
+
+      - name: avg_discount_pct
+        description: Average discount percentage across all line items.
+
+      - name: daily_total_revenue
+        description: Total gross_revenue across all categories for the day.
+        tests:
+          - not_null
+
+      - name: margin_pct
+        description: gross_profit / gross_revenue × 100.  NULL when revenue is 0.
+
+      - name: revenue_share_pct
+        description: >
+          This category's gross_revenue as a percentage of daily_total_revenue.
+          Values across all categories for a given date sum to ~100.
+
+  # ── fct_conversion_funnel ────────────────────────────────────────────────────
+  - name: fct_conversion_funnel
+    description: >
+      Monthly order conversion funnel.  Every order is classified into one of
+      seven funnel stages and aggregated by (order_year, order_month,
+      funnel_stage).  Also provides monthly totals (total_orders,
+      converted_orders) to support conversion-rate calculations without
+      sub-queries.
+
+      Grain: one row per (order_year, order_month, funnel_stage).
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - order_year
+            - order_month
+            - funnel_stage
+    columns:
+      - name: order_year
+        description: Calendar year.
+        tests:
+          - not_null
+
+      - name: order_month
+        description: Calendar month (1–12).
+        tests:
+          - not_null
+
+      - name: funnel_stage
+        description: >
+          Order lifecycle classification.
+          converted  — completed or delivered (revenue recognised).
+          in_transit — shipped (revenue probable).
+          pending    — pending (not yet committed).
+          lost       — cancelled (revenue not realised).
+          returned   — returned (revenue reversed after delivery).
+          refunded   — refunded (revenue reversed).
+          other      — any unlisted status value.
+        tests:
+          - not_null
+          - accepted_values:
+              values:
+                - converted
+                - in_transit
+                - pending
+                - lost
+                - returned
+                - refunded
+                - other
+
+      - name: order_count
+        description: Distinct orders in this stage for the month.
+        tests:
+          - not_null
+
+      - name: customer_count
+        description: Distinct customers with an order in this stage for the month.
+        tests:
+          - not_null
+
+      - name: stage_revenue
+        description: Sum of order totals in this stage for the month.
+
+      - name: total_orders
+        description: Total orders in the month across all stages.
+        tests:
+          - not_null
+
+      - name: converted_orders
+        description: Orders in the 'converted' stage for the month.
+        tests:
+          - not_null
+
+      - name: converted_revenue
+        description: Revenue from 'converted' orders for the month.
+        tests:
+          - not_null
+
+      - name: stage_share_pct
+        description: order_count / total_orders × 100 for this stage.
+
+      - name: monthly_conversion_rate_pct
+        description: >
+          converted_orders / total_orders × 100.  Same value for every
+          stage row in a given month.
+        tests:
+          - not_null
+
+  # ── dim_customers ────────────────────────────────────────────────────────────
+  - name: dim_customers
+    description: >
+      SCD Type 2 customer dimension.  Tracks changes to eight slowly-changing
+      attributes (email, phone, address, city, state, zip_code, income_bracket,
+      is_churned).  Each change event creates a new row with an updated
+      effective_from timestamp and closes the previous row with effective_to.
+
+      Use is_current = true to obtain the current snapshot of each customer.
+      customer_key is a surrogate unique per customer version, not per customer.
+
+      Grain: one row per (customer_id, effective_from).
+    columns:
+      - name: customer_key
+        description: >
+          MD5 surrogate key — unique per customer version.
+          Generated from (customer_id, effective_from).
+        tests:
+          - unique
+          - not_null
+
+      - name: customer_id
+        description: >
+          Natural key.  Multiple rows exist per customer when historical
+          versions are present.
+        tests:
+          - not_null
+
+      - name: email
+        description: Customer email at this version in history.
+
+      - name: gender
+        description: Lowercased gender code at time of registration.
+        tests:
+          - accepted_values:
+              values: ['m', 'f', 'other']
+
+      - name: income_bracket
+        description: Income tier at this point in history.
+        tests:
+          - accepted_values:
+              values: ['low', 'medium', 'high', 'premium']
+
+      - name: is_churned
+        description: Churn status at this version in history.
+        tests:
+          - not_null
+
+      - name: effective_from
+        description: Timestamp when this customer version became active.
+        tests:
+          - not_null
+
+      - name: effective_to
+        description: >
+          Timestamp when this version was superseded.
+          NULL for the current (latest) version of each customer.
+
+      - name: is_current
+        description: True for the most recent version of each customer.
+        tests:
+          - not_null
+
+      - name: last_updated_at
+        description: Timestamp of the dbt snapshot run that wrote this row.
+        tests:
+          - not_null
+
+  # ── dim_products ─────────────────────────────────────────────────────────────
+  - name: dim_products
+    description: >
+      Enriched product dimension.  Products are not versioned — the catalogue
+      is treated as a current snapshot.  Adds unit_margin, margin_pct,
+      price_tier, and rating_tier derived columns so BI tools can filter and
+      segment without writing CASE expressions.
+
+      Grain: one row per product_id.
+    columns:
+      - name: product_id
+        description: Natural primary key for the product catalogue.
+        tests:
+          - unique
+          - not_null
+
+      - name: product_name
+        description: Display name of the product.
+        tests:
+          - not_null
+
+      - name: category
+        description: Top-level product category.
+        tests:
+          - not_null
+
+      - name: sub_category
+        description: Product sub-category within the category.
+        tests:
+          - not_null
+
+      - name: price
+        description: Current retail price in USD.
+        tests:
+          - not_null
+
+      - name: cost
+        description: Unit cost of goods sold in USD.
+        tests:
+          - not_null
+
+      - name: unit_margin
+        description: price minus cost, rounded to 2 decimal places.
+
+      - name: margin_pct
+        description: (price - cost) / price × 100.  NULL when price is 0.
+
+      - name: rating
+        description: Average customer rating, clamped to [0.0, 5.0].
+        tests:
+          - not_null
+
+      - name: is_active
+        description: False when the product has been discontinued.
+        tests:
+          - not_null
+
+      - name: price_tier
+        description: >
+          Price band classification.
+          budget    — price < $25.
+          mid_range — $25 ≤ price < $100.
+          premium   — $100 ≤ price < $500.
+          luxury    — price ≥ $500.
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['budget', 'mid_range', 'premium', 'luxury']
+
+      - name: rating_tier
+        description: >
+          Star-rating band.
+          top_rated    — rating ≥ 4.5.
+          well_rated   — 3.5 ≤ rating < 4.5.
+          average      — 2.5 ≤ rating < 3.5.
+          poorly_rated — rating < 2.5.
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['top_rated', 'well_rated', 'average', 'poorly_rated']

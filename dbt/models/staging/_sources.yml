@@ -1,0 +1,88 @@
+version: 2
+
+# ── Raw data sources ──────────────────────────────────────────────────────────
+# These CSVs are committed under data/raw/samples/ and are the development
+# source for all staging models.  Staging models reference these files
+# directly via DuckDB's read_csv_auto() rather than through dbt source()
+# macros, because dbt-duckdb does not need a database table to exist first.
+#
+# In production, swap the read_csv_auto() calls in staging models for reads
+# against the silver-layer Parquet files on S3 / your data warehouse.
+
+sources:
+  - name: raw_samples
+    description: >
+      10 000-row sample CSV files produced by
+      src/ingestion/generate_ecommerce_data.py --samples-only.
+      Committed to the repository at data/raw/samples/.  Full-volume
+      JSON files (500 K orders) live at data/raw/ but are git-ignored.
+    meta:
+      owner: data-engineering
+      source_path: data/raw/samples/
+      refresh: on-demand (re-run generate_ecommerce_data.py)
+
+    tables:
+      - name: customers
+        description: >
+          One row per customer.  Includes demographics, churn status,
+          and a propensity weight used during order generation.
+        columns:
+          - name: customer_id
+            description: Unique integer customer identifier.
+          - name: email
+            description: Customer email address (PII).
+          - name: gender
+            description: "Gender code as generated: M, F, or Other."
+          - name: income_bracket
+            description: "Income tier: low, medium, high, or premium."
+          - name: is_churned
+            description: >
+              Boolean flag.  True when the customer stopped purchasing
+              more than 180 days before the data-generation run date.
+          - name: churn_date
+            description: Date churned, or empty string when not churned.
+
+      - name: products
+        description: >
+          Full product catalogue (5 000 SKUs).  Popularity is
+          Pareto-distributed; cost is ~60 % of price on average.
+        columns:
+          - name: product_id
+            description: Unique integer product identifier.
+          - name: price
+            description: Retail price in USD.
+          - name: cost
+            description: Unit cost of goods sold in USD.
+          - name: rating
+            description: Average customer rating (0.0 – 5.0).
+          - name: is_active
+            description: False when the product has been discontinued.
+
+      - name: orders
+        description: >
+          One row per order header.  Line items are in order_items.
+          Order dates are spread over a two-year window with seasonal
+          spikes (Black Friday, Christmas, Valentine's Day).
+        columns:
+          - name: order_id
+            description: Unique integer order identifier.
+          - name: status
+            description: >
+              Order lifecycle status.  Possible values:
+              completed, shipped, delivered, cancelled,
+              returned, refunded, pending.
+          - name: total
+            description: Grand total in USD (subtotal + shipping + tax).
+
+      - name: order_items
+        description: >
+          One row per order line item (product × order).
+          discount_pct is 0 – 30 %; line_total already reflects
+          the discount.
+        columns:
+          - name: order_item_id
+            description: Unique integer order-item identifier.
+          - name: discount_pct
+            description: Percentage discount applied (0 – 30).
+          - name: line_total
+            description: quantity × unit_price × (1 − discount_pct / 100).

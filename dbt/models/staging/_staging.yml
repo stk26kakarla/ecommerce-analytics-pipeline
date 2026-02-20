@@ -1,0 +1,309 @@
+version: 2
+
+models:
+  # ── stg_customers ────────────────────────────────────────────────────────────
+  - name: stg_customers
+    description: >
+      Cleaned and typed customer records sourced from the committed sample CSV.
+      Each row represents one unique customer account.  PII columns (email,
+      phone, address) are present and must be masked before sharing with
+      non-privileged consumers.  The gender column is normalised to lowercase
+      (m / f / other).  churn_date is NULL for active customers.
+    columns:
+      - name: customer_id
+        description: Surrogate-free primary key for the customers table.
+        tests:
+          - unique
+          - not_null
+
+      - name: first_name
+        description: Customer given name (trimmed).
+        tests:
+          - not_null
+
+      - name: last_name
+        description: Customer family name (trimmed).
+        tests:
+          - not_null
+
+      - name: email
+        description: Lowercased, trimmed email address (PII).
+        tests:
+          - unique
+          - not_null
+
+      - name: phone
+        description: Phone number string (PII).
+
+      - name: address
+        description: Street address (PII).
+
+      - name: city
+        description: City of the customer's registered address.
+        tests:
+          - not_null
+
+      - name: state
+        description: US state or territory abbreviation.
+        tests:
+          - not_null
+
+      - name: zip_code
+        description: Postal / ZIP code.
+
+      - name: country
+        description: Two-letter ISO country code.
+        tests:
+          - not_null
+
+      - name: registration_date
+        description: Date the account was created.
+        tests:
+          - not_null
+
+      - name: birth_date
+        description: Customer date of birth (PII).
+
+      - name: gender
+        description: "Lowercased gender code: m, f, or other."
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['m', 'f', 'other']
+
+      - name: income_bracket
+        description: "Self-reported income tier: low, medium, high, or premium."
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['low', 'medium', 'high', 'premium']
+
+      - name: is_churned
+        description: True when the customer has churned (180+ days inactive).
+        tests:
+          - not_null
+
+      - name: churn_date
+        description: Date of churn event.  NULL for active customers.
+
+  # ── stg_products ─────────────────────────────────────────────────────────────
+  - name: stg_products
+    description: >
+      Cleaned product catalogue with 5 000 SKUs.  Rating is clamped to [0, 5]
+      to guard against generator drift.  Discontinued products are kept with
+      is_active = false so historical order analysis remains accurate.
+    columns:
+      - name: product_id
+        description: Primary key for the products table.
+        tests:
+          - unique
+          - not_null
+
+      - name: product_name
+        description: Display name of the product (trimmed).
+        tests:
+          - not_null
+
+      - name: category
+        description: Top-level product category.
+        tests:
+          - not_null
+
+      - name: sub_category
+        description: Product sub-category within the parent category.
+        tests:
+          - not_null
+
+      - name: brand
+        description: Brand name.
+        tests:
+          - not_null
+
+      - name: price
+        description: Current retail price in USD.  Always positive.
+        tests:
+          - not_null
+
+      - name: cost
+        description: Unit cost of goods sold in USD.
+        tests:
+          - not_null
+
+      - name: weight_kg
+        description: Shipping weight in kilograms.
+
+      - name: rating
+        description: Average customer star rating, clamped to [0.0, 5.0].
+        tests:
+          - not_null
+
+      - name: review_count
+        description: Number of customer reviews.
+        tests:
+          - not_null
+
+      - name: is_active
+        description: False when the product has been discontinued.
+        tests:
+          - not_null
+
+      - name: created_date
+        description: Date the product was added to the catalogue.
+        tests:
+          - not_null
+
+  # ── stg_orders ───────────────────────────────────────────────────────────────
+  - name: stg_orders
+    description: >
+      Cleaned order headers.  Status and payment_method are lowercased for
+      consistent filtering.  Missing shipping fields default to 'UNKNOWN'
+      rather than propagating NULLs.  order_year and order_month are derived
+      from order_date for convenience partitioning.
+    columns:
+      - name: order_id
+        description: Primary key for the orders table.
+        tests:
+          - unique
+          - not_null
+
+      - name: customer_id
+        description: Foreign key to stg_customers.
+        tests:
+          - not_null
+          - relationships:
+              to: ref('stg_customers')
+              field: customer_id
+
+      - name: order_date
+        description: Calendar date the order was placed.
+        tests:
+          - not_null
+
+      - name: order_timestamp
+        description: Full timestamp when the order was submitted.
+        tests:
+          - not_null
+
+      - name: status
+        description: >
+          Lowercased order lifecycle status.
+          Possible values: completed, shipped, delivered,
+          cancelled, returned, refunded, pending.
+        tests:
+          - not_null
+          - accepted_values:
+              values:
+                - completed
+                - shipped
+                - delivered
+                - cancelled
+                - returned
+                - refunded
+                - pending
+
+      - name: payment_method
+        description: Lowercased payment method.
+        tests:
+          - not_null
+          - accepted_values:
+              values:
+                - credit_card
+                - debit_card
+                - paypal
+                - apple_pay
+                - google_pay
+                - gift_card
+
+      - name: shipping_city
+        description: Destination city ('UNKNOWN' when absent).
+        tests:
+          - not_null
+
+      - name: shipping_state
+        description: Destination state ('UNKNOWN' when absent).
+        tests:
+          - not_null
+
+      - name: shipping_zip
+        description: Destination ZIP code ('UNKNOWN' when absent).
+        tests:
+          - not_null
+
+      - name: subtotal
+        description: Order subtotal before shipping and tax.
+        tests:
+          - not_null
+
+      - name: shipping_cost
+        description: Shipping fee in USD.
+        tests:
+          - not_null
+
+      - name: tax
+        description: Sales tax in USD.
+        tests:
+          - not_null
+
+      - name: total
+        description: Grand total (subtotal + shipping_cost + tax).
+        tests:
+          - not_null
+
+      - name: order_year
+        description: Calendar year derived from order_date.
+        tests:
+          - not_null
+
+      - name: order_month
+        description: Calendar month (1–12) derived from order_date.
+        tests:
+          - not_null
+
+  # ── stg_order_items ──────────────────────────────────────────────────────────
+  - name: stg_order_items
+    description: >
+      Cleaned order line items.  One row per product per order.
+      line_total already reflects the applied discount percentage.
+      Use the products.cost column for margin calculations.
+    columns:
+      - name: order_item_id
+        description: Primary key for the order_items table.
+        tests:
+          - unique
+          - not_null
+
+      - name: order_id
+        description: Foreign key to stg_orders.
+        tests:
+          - not_null
+          - relationships:
+              to: ref('stg_orders')
+              field: order_id
+
+      - name: product_id
+        description: Foreign key to stg_products.
+        tests:
+          - not_null
+          - relationships:
+              to: ref('stg_products')
+              field: product_id
+
+      - name: quantity
+        description: Number of units ordered (always >= 1).
+        tests:
+          - not_null
+
+      - name: unit_price
+        description: Price per unit at the time of the order.
+        tests:
+          - not_null
+
+      - name: discount_pct
+        description: Percentage discount applied (0–30).
+        tests:
+          - not_null
+
+      - name: line_total
+        description: quantity × unit_price × (1 − discount_pct / 100).
+        tests:
+          - not_null

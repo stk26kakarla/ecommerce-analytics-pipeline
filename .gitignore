@@ -17,6 +17,14 @@ data/bronze/
 data/silver/
 data/gold/
 
+# dbt
+dbt/target/
+dbt/dbt_packages/
+
+# DuckDB runtime database (created by dbt run)
+data/ecommerce.duckdb
+data/ecommerce.duckdb.wal
+
 # IDE
 .idea/
 .vscode/

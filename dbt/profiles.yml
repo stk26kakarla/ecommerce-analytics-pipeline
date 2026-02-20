@@ -1,0 +1,18 @@
+# dbt connection profile for local development with DuckDB.
+#
+# This file is committed because DuckDB needs no real credentials.
+# In production, move sensitive profiles to ~/.dbt/profiles.yml.
+#
+# Usage:
+#   dbt run --project-dir dbt --profiles-dir dbt
+# or set DBT_PROFILES_DIR=dbt in your shell.
+
+ecommerce_analytics:
+  target: dev
+  outputs:
+    dev:
+      type: duckdb
+      # DuckDB file path, relative to the repo root (where dbt is invoked).
+      path: "data/ecommerce.duckdb"
+      schema: main
+      threads: 4

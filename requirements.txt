@@ -3,3 +3,6 @@ boto3==1.34.0
 psycopg2-binary==2.9.9
 faker==22.0.0
 pytest==8.0.0
+
+# dbt (DuckDB adapter — installs dbt-core automatically)
+dbt-duckdb==1.9.1

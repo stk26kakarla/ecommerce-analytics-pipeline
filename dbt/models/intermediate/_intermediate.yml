@@ -1,0 +1,178 @@
+version: 2
+
+models:
+  # ── int_order_enriched ───────────────────────────────────────────────────────
+  - name: int_order_enriched
+    description: >
+      Denormalised order line items enriched with order-header and product
+      context.  Joining happens once here so mart models can aggregate directly
+      without re-joining.  Cost and gross-profit columns are pre-computed to
+      centralise the margin logic.
+
+      Grain: one row per order_item_id.
+      Scope: all orders regardless of status (filtering is the mart's
+      responsibility).
+    columns:
+      - name: order_item_id
+        description: Primary key inherited from stg_order_items.
+        tests:
+          - unique
+          - not_null
+
+      - name: order_id
+        description: Foreign key to the parent order.
+        tests:
+          - not_null
+
+      - name: customer_id
+        description: Foreign key to the customer who placed the order.
+        tests:
+          - not_null
+
+      - name: order_date
+        description: Calendar date the parent order was placed.
+        tests:
+          - not_null
+
+      - name: order_year
+        description: Calendar year (partition helper).
+        tests:
+          - not_null
+
+      - name: order_month
+        description: Calendar month 1–12 (partition helper).
+        tests:
+          - not_null
+
+      - name: status
+        description: Lowercased order lifecycle status.
+        tests:
+          - not_null
+
+      - name: category
+        description: Top-level product category.
+        tests:
+          - not_null
+
+      - name: sub_category
+        description: Product sub-category.
+        tests:
+          - not_null
+
+      - name: quantity
+        description: Units ordered on this line.
+        tests:
+          - not_null
+
+      - name: line_total
+        description: Revenue from this line after discount.
+        tests:
+          - not_null
+
+      - name: unit_cost
+        description: Product cost per unit (from catalogue at query time).
+        tests:
+          - not_null
+
+      - name: item_cost
+        description: quantity × unit_cost.
+        tests:
+          - not_null
+
+      - name: item_gross_profit
+        description: >
+          line_total minus item_cost.  Can be negative when deep discounts
+          exceed the unit margin.
+
+      - name: order_total
+        description: Grand total of the parent order (denormalised).
+        tests:
+          - not_null
+
+  # ── int_customer_360 ─────────────────────────────────────────────────────────
+  - name: int_customer_360
+    description: >
+      Full 360-degree customer profile: identity, lifetime order statistics,
+      preferred category, recency-based engagement status, and revenue-based
+      value segment.
+
+      Only revenue-generating orders (completed / shipped / delivered) count
+      toward order metrics.  Customers who have never placed a qualifying order
+      are included with zeroed metrics and engagement_status = 'never_purchased'.
+
+      Grain: one row per customer_id.
+    columns:
+      - name: customer_id
+        description: Primary key — one row per customer.
+        tests:
+          - unique
+          - not_null
+
+      - name: email
+        description: Customer email (PII — mask before sharing).
+        tests:
+          - unique
+          - not_null
+
+      - name: total_orders
+        description: >
+          Count of revenue-generating orders.  0 for customers who have
+          never purchased.
+        tests:
+          - not_null
+
+      - name: total_revenue
+        description: >
+          Lifetime spend in USD (revenue orders only).
+          0.0 for customers who have never purchased.
+        tests:
+          - not_null
+
+      - name: avg_order_value
+        description: >
+          Average order total in USD.  0.0 for no-purchase customers.
+        tests:
+          - not_null
+
+      - name: avg_days_between_orders
+        description: >
+          Mean gap in days between consecutive orders.
+          NULL for customers with exactly one order.
+
+      - name: customer_tenure_days
+        description: >
+          Days between first and last revenue order.
+          NULL for no-purchase customers.
+
+      - name: preferred_category
+        description: >
+          Product category with the highest unit volume for this customer.
+          NULL for customers who have never purchased.
+
+      - name: days_since_registration
+        description: Days elapsed since the customer account was created.
+        tests:
+          - not_null
+
+      - name: engagement_status
+        description: >
+          Recency-based status.
+          active          — last order within 90 days.
+          at_risk         — last order 91–180 days ago.
+          lapsed          — last order > 180 days ago.
+          never_purchased — no qualifying orders on record.
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['active', 'at_risk', 'lapsed', 'never_purchased']
+
+      - name: value_segment
+        description: >
+          Revenue-based CLV tier.
+          high_value — lifetime revenue >= $1 000.
+          mid_value  — lifetime revenue $300–$999.
+          low_value  — lifetime revenue < $300 (including $0).
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['high_value', 'mid_value', 'low_value']
