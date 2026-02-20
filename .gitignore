@@ -9,9 +9,13 @@ terraform/.terraform.lock.hcl
 terraform/terraform.tfstate
 terraform/terraform.tfstate.backup
 
-# Data — ignore large generated files, keep sample CSVs
+# Data — ignore large generated files, keep sample CSVs and processed exports
 data/raw/*.json
 data/raw/**/*.json
+# data/processed/ CSVs are committed (gold exports)
+data/bronze/
+data/silver/
+data/gold/
 
 # IDE
 .idea/
